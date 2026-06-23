@@ -1,0 +1,67 @@
+# OpenFugu product configuration.
+#
+# This describes two externally-visible "models" (openfugu-flash / openfugu-pro)
+# backed by a shared pool of cloud workers. API keys are NEVER read here — they
+# come from environment variables (OPENAI_API_KEY, ANTHROPIC_API_KEY,
+# GEMINI_API_KEY, FUGU_API_KEY, FUGU_BASE_URL, ...). See openfugu/config.py.
+
+models:
+  openfugu-flash:
+    mode: per_question        # one routing decision, one worker answers fully
+    workers: [gpt_cheap, deepseek_fast, gemini_flash]
+  openfugu-pro:
+    mode: per_step            # per-step multi-turn coordination (Worker/Thinker/Verifier)
+    workers: [gpt_strong, claude_strong, gemini_pro, deepseek_reasoner]
+    max_turns: 5
+
+workers:
+  # id -> provider_model uses litellm model naming (provider/model).
+  gpt_cheap:
+    provider_model: openai/gpt-4o-mini
+    display_name: "GPT-4o mini"
+    enabled: true
+    tags: [cheap, fast]
+    max_tokens: 1024
+    temperature: 0.2
+  deepseek_fast:
+    provider_model: deepseek/deepseek-chat
+    display_name: "DeepSeek Chat"
+    enabled: true
+    tags: [fast, reasoning]
+    max_tokens: 1024
+    temperature: 0.2
+  gemini_flash:
+    provider_model: gemini/gemini-1.5-flash
+    display_name: "Gemini 1.5 Flash"
+    enabled: true
+    tags: [fast, cheap]
+    max_tokens: 1024
+    temperature: 0.2
+  gpt_strong:
+    provider_model: openai/gpt-4o
+    display_name: "GPT-4o"
+    enabled: true
+    tags: [reasoning, code]
+    max_tokens: 2048
+    temperature: 0.2
+  claude_strong:
+    provider_model: anthropic/claude-3-5-sonnet
+    display_name: "Claude 3.5 Sonnet"
+    enabled: true
+    tags: [code, reasoning]
+    max_tokens: 2048
+    temperature: 0.2
+  gemini_pro:
+    provider_model: gemini/gemini-1.5-pro
+    display_name: "Gemini 1.5 Pro"
+    enabled: true
+    tags: [long_context, reasoning]
+    max_tokens: 2048
+    temperature: 0.2
+  deepseek_reasoner:
+    provider_model: deepseek/deepseek-reasoner
+    display_name: "DeepSeek Reasoner"
+    enabled: true
+    tags: [reasoning]
+    max_tokens: 2048
+    temperature: 0.2
