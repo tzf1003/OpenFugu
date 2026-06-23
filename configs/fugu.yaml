@@ -1,67 +1,91 @@
-# OpenFugu product configuration.
-#
-# This describes two externally-visible "models" (openfugu-flash / openfugu-pro)
-# backed by a shared pool of cloud workers. API keys are NEVER read here — they
-# come from environment variables (OPENAI_API_KEY, ANTHROPIC_API_KEY,
-# GEMINI_API_KEY, FUGU_API_KEY, FUGU_BASE_URL, ...). See openfugu/config.py.
+# OpenFugu product configuration — 11-model cloud pool via OpenAI-compatible gateway.
+# All models route through one gateway (OPENAI_API_BASE), so litellm uses the
+# openai/ prefix. API keys come from env vars, never from this file.
 
 models:
   openfugu-flash:
-    mode: per_question        # one routing decision, one worker answers fully
-    workers: [gpt_cheap, deepseek_fast, gemini_flash]
+    mode: per_question
+    workers: [gpt_5_5, gemini_3_5_flash, deepseek_v4_flash, claude_haiku_4, kimi_k2_6]
   openfugu-pro:
-    mode: per_step            # per-step multi-turn coordination (Worker/Thinker/Verifier)
-    workers: [gpt_strong, claude_strong, gemini_pro, deepseek_reasoner]
+    mode: per_step
+    workers: [gpt_5_4, claude_opus_4, claude_sonnet_4, gemini_3_1_pro, deepseek_v4_pro, kimi_k2_7_code]
     max_turns: 5
 
 workers:
-  # id -> provider_model uses litellm model naming (provider/model).
-  gpt_cheap:
-    provider_model: openai/gpt-4o-mini
-    display_name: "GPT-4o mini"
+  gpt_5_5:
+    provider_model: openai/gpt-5.5
+    display_name: "GPT-5.5"
     enabled: true
-    tags: [cheap, fast]
+    tags: [strong, reasoning]
     max_tokens: 1024
     temperature: 0.2
-  deepseek_fast:
-    provider_model: deepseek/deepseek-chat
-    display_name: "DeepSeek Chat"
+  gpt_5_4:
+    provider_model: openai/gpt-5.4
+    display_name: "GPT-5.4"
     enabled: true
-    tags: [fast, reasoning]
-    max_tokens: 1024
+    tags: [strong, reasoning]
+    max_tokens: 2048
     temperature: 0.2
-  gemini_flash:
-    provider_model: gemini/gemini-1.5-flash
-    display_name: "Gemini 1.5 Flash"
+  claude_opus_4:
+    provider_model: openai/claude-opus-4-8
+    display_name: "Claude Opus 4"
     enabled: true
-    tags: [fast, cheap]
-    max_tokens: 1024
+    tags: [strong, reasoning, code]
+    max_tokens: 2048
     temperature: 0.2
-  gpt_strong:
-    provider_model: openai/gpt-4o
-    display_name: "GPT-4o"
+  claude_sonnet_4:
+    provider_model: openai/claude-sonnet-4-6
+    display_name: "Claude Sonnet 4"
     enabled: true
     tags: [reasoning, code]
     max_tokens: 2048
     temperature: 0.2
-  claude_strong:
-    provider_model: anthropic/claude-3-5-sonnet
-    display_name: "Claude 3.5 Sonnet"
+  claude_haiku_4:
+    provider_model: openai/claude-haiku-4-5-20251001
+    display_name: "Claude Haiku 4"
+    enabled: true
+    tags: [fast, cheap]
+    max_tokens: 1024
+    temperature: 0.2
+  gemini_3_5_flash:
+    provider_model: openai/gemini-3.5-flash
+    display_name: "Gemini 3.5 Flash"
+    enabled: true
+    tags: [fast, cheap]
+    max_tokens: 1024
+    temperature: 0.2
+  gemini_3_1_pro:
+    provider_model: openai/gemini-3.1-pro-preview
+    display_name: "Gemini 3.1 Pro"
+    enabled: true
+    tags: [strong, reasoning, long_context]
+    max_tokens: 2048
+    temperature: 0.2
+  deepseek_v4_pro:
+    provider_model: openai/deepseek-v4-pro
+    display_name: "DeepSeek V4 Pro"
+    enabled: true
+    tags: [strong, reasoning]
+    max_tokens: 2048
+    temperature: 0.2
+  deepseek_v4_flash:
+    provider_model: openai/deepseek-v4-flash
+    display_name: "DeepSeek V4 Flash"
+    enabled: true
+    tags: [fast, reasoning]
+    max_tokens: 1024
+    temperature: 0.2
+  kimi_k2_7_code:
+    provider_model: openai/kimi-k2.7-code
+    display_name: "Kimi K2.7 Code"
     enabled: true
     tags: [code, reasoning]
     max_tokens: 2048
     temperature: 0.2
-  gemini_pro:
-    provider_model: gemini/gemini-1.5-pro
-    display_name: "Gemini 1.5 Pro"
+  kimi_k2_6:
+    provider_model: openai/kimi-k2.6
+    display_name: "Kimi K2.6"
     enabled: true
-    tags: [long_context, reasoning]
-    max_tokens: 2048
-    temperature: 0.2
-  deepseek_reasoner:
-    provider_model: deepseek/deepseek-reasoner
-    display_name: "DeepSeek Reasoner"
-    enabled: true
-    tags: [reasoning]
-    max_tokens: 2048
+    tags: [fast, reasoning]
+    max_tokens: 1024
     temperature: 0.2

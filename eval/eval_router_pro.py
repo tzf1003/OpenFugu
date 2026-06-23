@@ -85,8 +85,10 @@ def main(argv=None):
         have_router = True
         print("[eval-pro] router: Qwen3-0.6B", flush=True)
     except Exception as e:
+        if not args.fake:
+            raise SystemExit(f"[eval-pro] Qwen/vector required for live eval: {e}")
         have_router = False
-        print(f"[eval-pro] no Qwen3-0.6B ({str(e)[:60]}); mock router", flush=True)
+        print(f"[eval-pro] no Qwen3-0.6B ({str(e)[:60]}); mock router (--fake only)", flush=True)
 
     def make_router(head_vec=None):
         if have_router:

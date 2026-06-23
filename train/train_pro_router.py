@@ -13,7 +13,7 @@ verifiable dataset.
   router : Qwen3-0.6B hidden state -> candidate head -> (agent_id, role_id)
   workers: CloudWorkerPool (litellm) or FakeCloudWorkerPool, by worker_id
   reward : per-sample evaluator score of the final answer
-  train  : sep-CMA-ES (or random-search fallback) over the head
+  train  : sep-CMA-ES over the head
 
 Cost note: each fitness eval is a multi-turn rollout with several worker
 generations per sample. Cloud per-step training is EXPENSIVE. Use --fake and a
@@ -83,8 +83,10 @@ def main(argv=None):
         base_head = router.head.clone()
         print("[pro-train] router: Qwen3-0.6B + base vector", flush=True)
     except Exception as e:
+        if not args.fake:
+            raise SystemExit(f"[pro-train] Qwen/vector required for live training: {e}")
         print(f"[pro-train] cannot load Qwen3-0.6B ({str(e)[:80]}); "
-              f"using mock head (random, for pipeline test only)", flush=True)
+              f"using mock head (--fake only)", flush=True)
         router = None
         base_head = np.zeros(HEAD_ROWS * HIDDEN)
 
@@ -130,29 +132,17 @@ def main(argv=None):
 
     dim = HEAD_ROWS * HIDDEN
     best_vec, best_fit = base_vec.copy(), base_fit
-    try:
-        import cma
-        es = cma.CMAEvolutionStrategy(base_vec, args.sigma0,
-                                      {"seed": args.seed, "verbose": -9, "CMA_diagonal": True})
-        for it in range(args.iters):
-            cands = es.ask()
-            fits = [rollout_score(c) for c in cands]
-            es.tell(cands, [-f for f in fits])
-            i = int(np.argmax(fits))
-            if fits[i] > best_fit:
-                best_fit, best_vec = fits[i], cands[i].copy()
-            print(f"[iter {it}] best={best_fit:.3f} (base {base_fit:.3f})", flush=True)
-    except ImportError:
-        rng = np.random.default_rng(args.seed)
-        print("[pro-train] cma not installed — random search fallback", flush=True)
-        pop = 8
-        for it in range(args.iters):
-            cands = [base_vec + rng.normal(0, args.sigma0, dim) for _ in range(pop)]
-            fits = [rollout_score(c) for c in cands]
-            i = int(np.argmax(fits))
-            if fits[i] > best_fit:
-                best_fit, best_vec = fits[i], cands[i].copy()
-            print(f"[iter {it}] best={best_fit:.3f} (base {base_fit:.3f})", flush=True)
+    import cma
+    es = cma.CMAEvolutionStrategy(base_vec, args.sigma0,
+                                  {"seed": args.seed, "verbose": -9, "CMA_diagonal": True})
+    for it in range(args.iters):
+        cands = es.ask()
+        fits = [rollout_score(c) for c in cands]
+        es.tell(cands, [-f for f in fits])
+        i = int(np.argmax(fits))
+        if fits[i] > best_fit:
+            best_fit, best_vec = fits[i], cands[i].copy()
+        print(f"[iter {it}] best={best_fit:.3f} (base {base_fit:.3f})", flush=True)
 
     np.save(args.out, best_vec)
     print(f"\n[result] pro head = {best_fit:.3f} vs base {base_fit:.3f}")

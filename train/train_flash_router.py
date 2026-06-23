@@ -152,34 +152,18 @@ def main(argv=None):
 
     dim = n_workers * HIDDEN
     best_vec, best_fit = None, -1.0
-    try:
-        import cma
-        es = cma.CMAEvolutionStrategy(np.zeros(dim), args.sigma0,
-                                      {"seed": args.seed, "verbose": -9, "CMA_diagonal": True})
-        for it in range(args.iters):
-            cands = es.ask()
-            fits = [fitness(c) for c in cands]
-            es.tell(cands, [-f for f in fits])
-            i = int(np.argmax(fits))
-            if fits[i] > best_fit:
-                best_fit, best_vec = fits[i], cands[i].copy()
-            print(f"[iter {it}] best={best_fit:.3f}  (best single {best_single:.3f}, "
-                  f"oracle {oracle:.3f})", flush=True)
-    except ImportError:
-        # Fallback: random search when cma isn't installed. Less sample-efficient
-        # but keeps the pipeline runnable offline. Prefer cma for real runs.
-        rng = np.random.default_rng(args.seed)
-        print("[flash-train] cma not installed — using random search fallback", flush=True)
-        pop = 16
-        best_vec, best_fit = np.zeros(dim), fitness(np.zeros(dim))
-        for it in range(args.iters):
-            cands = [rng.normal(0, args.sigma0, dim) for _ in range(pop)]
-            fits = [fitness(c) for c in cands]
-            i = int(np.argmax(fits))
-            if fits[i] > best_fit:
-                best_fit, best_vec = fits[i], cands[i].copy()
-            print(f"[iter {it}] best={best_fit:.3f}  (best single {best_single:.3f}, "
-                  f"oracle {oracle:.3f})", flush=True)
+    import cma
+    es = cma.CMAEvolutionStrategy(np.zeros(dim), args.sigma0,
+                                  {"seed": args.seed, "verbose": -9, "CMA_diagonal": True})
+    for it in range(args.iters):
+        cands = es.ask()
+        fits = [fitness(c) for c in cands]
+        es.tell(cands, [-f for f in fits])
+        i = int(np.argmax(fits))
+        if fits[i] > best_fit:
+            best_fit, best_vec = fits[i], cands[i].copy()
+        print(f"[iter {it}] best={best_fit:.3f}  (best single {best_single:.3f}, "
+              f"oracle {oracle:.3f})", flush=True)
 
     np.save(args.out, best_vec)
     lift = (best_fit - best_single) / best_single * 100 if best_single > 0 else float("inf")

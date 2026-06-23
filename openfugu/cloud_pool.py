@@ -39,12 +39,13 @@ class CloudWorkerPool:
     which is useful for OpenAI-compatible gateways (Novita, OpenRouter, ...)."""
 
     def __init__(self, config: FuguConfig, default_max_tokens: int = 1024,
-                 default_temperature: float = 0.2):
+                 default_temperature: float = 0.2, timeout: float = 60.0):
         import litellm
         self.litellm = litellm
         self.config = config
         self.default_max_tokens = default_max_tokens
         self.default_temperature = default_temperature
+        self.timeout = timeout
         self.api_key = os.environ.get("FUGU_API_KEY")
         self.api_base = os.environ.get("FUGU_BASE_URL")
         self._latency: dict[str, list[float]] = {}
@@ -70,6 +71,11 @@ class CloudWorkerPool:
             kw["api_key"] = self.api_key
         if self.api_base:
             kw["api_base"] = self.api_base
+        if self.timeout:
+            kw["timeout"] = self.timeout
+        # disable litellm retries so a slow/timed-out model fails fast instead
+        # of burning 3x the timeout per call
+        kw["num_retries"] = 0
         t0 = time.time()
         try:
             r = self.litellm.completion(**kw)

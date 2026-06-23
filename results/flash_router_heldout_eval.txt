@@ -1,0 +1,25 @@
+# Flash router held-out eval (2026-06-23)
+
+[eval-flash] 20 samples, 5 workers, held_out=True
+
+=== flash router eval (n=20, held_out=True) ===
+  best single worker : 1.000  (gpt_5_5)
+  random worker      : 0.950
+  trained router     : 1.000
+  oracle (per-q best): 1.000
+  lift vs best single: +0.0%
+  router/oracle      : 100.0%
+  per-worker score:
+    gpt_5_5          1.000
+    gemini_3_5_flash 0.900
+    deepseek_v4_flash 1.000
+    claude_haiku_4   0.800
+    kimi_k2_6        0.950
+  routing distribution:
+    deepseek_v4_flash 14 (70%)
+    gpt_5_5          4 (20%)
+    claude_haiku_4   1 (5%)
+    gemini_3_5_flash 1 (5%)
+  per-domain router score:
+    math         1.000  (n=20)
+  WARNING: small sample — treat as smoke test, not a generalization claim.

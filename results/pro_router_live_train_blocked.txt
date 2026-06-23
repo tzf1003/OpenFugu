@@ -1,0 +1,11 @@
+# Pro router live training status (2026-06-23)
+
+Command:
+  python3 train/train_pro_router.py --model Qwen/Qwen3-0.6B --vector model_iter_60.npy --dataset data/router_train_small.jsonl --out data/pro_head.npy --n-train 2 --iters 1
+
+Result:
+  [pro-train] 2 samples, 6 workers, max_turns=4
+  [pro-train] pool: CloudWorkerPool
+  [pro-train] Qwen/vector required for live training: [Errno 2] No such file or directory: 'model_iter_60.npy'
+
+No mock fallback was run.

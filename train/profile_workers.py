@@ -70,8 +70,9 @@ def main(argv=None):
           f"= {len(samples) * len(worker_ids)} calls "
           f"({len(seen)} already cached)", flush=True)
 
-    records = []
+    total = sum(1 for s in samples for wid in worker_ids if (s["id"], wid) not in seen)
     n_done = 0
+    fout = open(args.out, "a")
     for s in samples:
         msgs = [{"role": "user", "content": s["prompt"]}]
         for wid in worker_ids:
@@ -87,16 +88,15 @@ def main(argv=None):
             score = score_sample(s, out) if err is None else 0.0
             rec = {"sample_id": s["id"], "worker_id": wid, "output": out,
                    "score": score, "latency": round(dt, 3), "error": err}
-            records.append(rec)
+            fout.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            fout.flush()
             n_done += 1
+            tag = "ERR" if err else f"score={score:.1f}"
+            print(f"[profile] {n_done}/{total}  {s['id']} x {wid:16s}  "
+                  f"{dt:.1f}s  {tag}  {out[:50]!r}", flush=True)
             if err:
-                print(f"[profile] ERROR {wid} on {s['id']}: {err[:80]}", flush=True)
-
-    # append new records to the cache file
-    if records:
-        with open(args.out, "a") as f:
-            for r in records:
-                f.write(json.dumps(r, ensure_ascii=False) + "\n")
+                print(f"[profile]   ERROR detail: {err[:120]}", flush=True)
+    fout.close()
     print(f"[profile] wrote {n_done} new records to {args.out}", flush=True)
 
     # summary
