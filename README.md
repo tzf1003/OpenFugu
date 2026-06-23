@@ -94,6 +94,147 @@ python eval/ultra_e2e.py --conductor-ckpt <conductor dir> \
 python eval/eval_orchestration.py        # trained coordinator +107% over best single, PASS
 ```
 
+## Product mode: openfugu-flash / openfugu-pro
+
+On top of the TRINITY mechanism, OpenFugu ships a minimal **dual-model product
+prototype**: two externally-visible "models" backed by a shared cloud worker
+pool.
+
+| Model | Routing | When |
+|-------|---------|------|
+| **openfugu-flash** | per-question — one routing decision, one worker answers fully | fast, cheap |
+| **openfugu-pro** | per-step — each turn re-routes (Worker/Thinker/Verifier) until ACCEPT or max_turns | slower, finer-grained |
+
+Both are served behind one OpenAI-compatible endpoint. Credentials come from the
+environment via litellm — **never** from config or code.
+
+### Configure
+
+`configs/fugu.yaml` describes the two models and the worker pool. Edit it to
+pick which cloud models participate, their tags, max_tokens, temperature, and
+enabled flag. The same pool can be shared or split between flash and pro.
+
+```yaml
+models:
+  openfugu-flash:
+    mode: per_question
+    workers: [gpt_cheap, deepseek_fast, gemini_flash]
+  openfugu-pro:
+    mode: per_step
+    workers: [gpt_strong, claude_strong, gemini_pro, deepseek_reasoner]
+    max_turns: 5
+workers:
+  gpt_cheap:
+    provider_model: openai/gpt-4o-mini
+    enabled: true
+    tags: [cheap, fast]
+    max_tokens: 1024
+    temperature: 0.2
+```
+
+### Serve
+
+```bash
+# offline (mock pool, no API key — for trying the surface)
+python openfugu/product_serve.py --port 8090
+
+# live (real cloud workers via litellm)
+OPENAI_API_KEY=... ANTHROPIC_API_KEY=... GEMINI_API_KEY=... \
+  python openfugu/product_serve.py --port 8090
+
+# with a trained flash router head (Qwen3-0.6B features)
+FUGU_MODEL=<Qwen3-0.6B dir> FUGU_VECTOR=model_iter_60.npy \
+  python openfugu/product_serve.py --flash-head flash_head.npy --port 8090
+```
+
+```bash
+curl localhost:8090/v1/models   # -> openfugu-flash, openfugu-pro
+curl localhost:8090/v1/chat/completions -H 'Content-Type: application/json' \
+  -d '{"model":"openfugu-flash","messages":[{"role":"user","content":"..."}]}'
+```
+
+`usage` returns `fugu_mode` (per_question|per_step) and `fugu_turns`. Pass
+`"debug":true` in the request body to expose the selected worker / route trace
+(hidden by default so the pool is not leaked).
+
+### Build verifiable training data (breadth-first)
+
+The router learns from **verifiable** samples across domains — not just GSM8K.
+Unified schema: `{id, domain, prompt, gold, evaluator, weight, metadata}`.
+Evaluators: `numeric`, `exact`, `choice`, `regex`, `json_fields`, `tool_calls`,
+`python_tests`.
+
+```bash
+# union public sources (needs `datasets` + network)
+python train/build_verifiable_dataset.py \
+  --sources gsm8k,toolscale,mmlu,humaneval \
+  --out data/router_train.jsonl --limit-per-source 1000
+
+# your own commercial data (most important!) — a .jsonl in the unified schema
+python train/build_verifiable_dataset.py \
+  --sources data/my_tasks.jsonl --out data/router_train.jsonl
+```
+
+### Profile workers (cache once, train free)
+
+Profile every worker on every sample ONCE. The cache lets CMA-ES train the
+router with zero new API calls. Resumable — interrupted runs can restart.
+
+```bash
+python train/profile_workers.py --config configs/fugu.yaml \
+  --dataset data/router_train.jsonl --out data/worker_profile.jsonl \
+  --model openfugu-flash
+```
+
+### Train the flash router
+
+```bash
+python train/train_flash_router.py \
+  --model <Qwen3-0.6B dir> --dataset data/router_train.jsonl \
+  --profile data/worker_profile.jsonl --out flash_head.npy --iters 20
+# pipeline test without Qwen3-0.6B:
+python train/train_flash_router.py --no-backbone \
+  --dataset data/router_train.jsonl --profile data/worker_profile.jsonl --out flash_head.npy
+```
+
+### Train the pro router
+
+Per-step training runs multi-turn rollouts, so it is expensive on cloud. Use
+`--fake` for the pipeline flow; scale up deliberately.
+
+```bash
+# offline pipeline test
+python train/train_pro_router.py --fake --dataset data/router_train.jsonl --out pro_head.npy
+# cloud (expensive — each fitness eval is several multi-turn generations)
+FUGU_MODEL=<Qwen3-0.6B dir> FUGU_VECTOR=model_iter_60.npy \
+  python train/train_pro_router.py --dataset data/router_train.jsonl --out pro_head.npy
+```
+
+### Evaluate
+
+```bash
+python eval/eval_router_flash.py --dataset data/router_eval.jsonl \
+  --profile data/worker_profile_eval.jsonl --head flash_head.npy --held-out
+python eval/eval_router_pro.py --fake --dataset data/router_eval.jsonl \
+  --head pro_head.npy --max-turns 4 --held-out
+```
+
+Both report best-single / router / oracle scores, lift %, per-domain breakdown,
+routing distribution, sample count, held-out flag, and small-sample/overfit
+warnings. They do not just print PASS.
+
+### Offline tests
+
+```bash
+python tests/test_offline.py   # no API key needed
+```
+
+**Honest note on training effectiveness.** Router value depends on data quality
+and **worker complementarity** — it is not "more data is better." If all workers
+are similar or the task is too easy for any single one, there is no routing
+headroom (see [results caveat](results/)). The framework is trainable,
+evaluable, and extensible; it does not promise commercial results.
+
 ## The mechanism in one breath
 
 A ~0.6B backbone (Qwen3-0.6B) never answers the user. It produces one hidden
