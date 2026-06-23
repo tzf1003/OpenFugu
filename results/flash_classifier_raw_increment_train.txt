@@ -1,0 +1,24 @@
+[flash-train] 42 samples, 5 workers: ['gpt_5_5', 'gemini_3_5_flash', 'deepseek_v4_flash', 'claude_haiku_4', 'kimi_k2_6']
+Loading weights:   0%|          | 0/311 [00:00<?, ?it/s]Loading weights: 100%|██████████| 311/311 [00:00<00:00, 3799.96it/s]
+[flash-train] backbone: Qwen3-0.6B
+[baseline] per-worker mean score: gpt_5_5=0.667, gemini_3_5_flash=0.762, deepseek_v4_flash=0.881, claude_haiku_4=0.738, kimi_k2_6=0.857
+[baseline] best single worker = 0.881
+[baseline] oracle (best per question) = 0.976
+/Users/xiaosong/Library/Python/3.14/lib/python/site-packages/cma/s.py:16: UserWarning: Could not import matplotlib.pyplot, therefore ``cma.plot()`` etc. is not available
+  _warnings.warn('Could not import matplotlib.pyplot, therefore'
+[iter 0] best=0.881  (best single 0.881, oracle 0.976)
+[iter 1] best=0.929  (best single 0.881, oracle 0.976)
+[iter 2] best=0.929  (best single 0.881, oracle 0.976)
+[iter 3] best=0.929  (best single 0.881, oracle 0.976)
+[iter 4] best=0.929  (best single 0.881, oracle 0.976)
+[iter 5] best=0.952  (best single 0.881, oracle 0.976)
+[iter 6] best=0.952  (best single 0.881, oracle 0.976)
+[iter 7] best=0.952  (best single 0.881, oracle 0.976)
+[iter 8] best=0.952  (best single 0.881, oracle 0.976)
+[iter 9] best=0.952  (best single 0.881, oracle 0.976)
+[iter 10] best=0.952  (best single 0.881, oracle 0.976)
+[iter 11] best=0.952  (best single 0.881, oracle 0.976)
+
+[result] flash router = 0.952 vs best single 0.881 (oracle 0.976, lift +8.1%)
+[result] saved data/flash_head.npy  (5120 floats = 5x1024)
+PASS — flash router >= best single worker on cached profile

@@ -23,7 +23,8 @@ Evaluators all return a float in [0,1]. This module is import-safe (no network,
 no datasets import at module top) so tests run offline.
 """
 from __future__ import annotations
-import json, re, sys, os
+import csv, gzip, json, re, sys, os
+from pathlib import Path
 
 # ---- evaluators ------------------------------------------------------------
 def _norm(s: str) -> str:
@@ -284,6 +285,125 @@ def humaneval_adapter(limit: int = 1000) -> list[dict]:
     return out
 
 
+def _raw_root() -> Path:
+    return Path(os.environ.get(
+        "OPENFUGU_RAW_DIR",
+        Path(__file__).resolve().parents[1] / "data" / "raw",
+    ))
+
+
+def _choice_prompt(question, choices):
+    letters = ["A", "B", "C", "D"]
+    opts = "\n".join(f"{letters[i]}. {c}" for i, c in enumerate(choices[:4]))
+    return f"{question}\n{opts}\nAnswer with the letter."
+
+
+def local_gsm8k_adapter(limit: int = 1000) -> list[dict]:
+    path = _raw_root() / "gsm8k" / "train.jsonl"
+    out = []
+    with open(path) as f:
+        for i, line in enumerate(f):
+            r = json.loads(line)
+            gold = r["answer"].split("####")[-1].strip().replace(",", "")
+            out.append(make_sample(f"gsm8k-{i}", "math", r["question"], gold,
+                                   "numeric", source=str(path)))
+            if len(out) >= limit:
+                break
+    return out
+
+
+def local_mmlu_adapter(limit: int = 1000) -> list[dict]:
+    out = []
+    for path in sorted((_raw_root() / "mmlu" / "data" / "dev").glob("*_dev.csv")):
+        subject = path.name.removesuffix("_dev.csv")
+        with open(path, newline="") as f:
+            for i, row in enumerate(csv.reader(f)):
+                if len(row) < 6:
+                    continue
+                out.append(make_sample(
+                    f"mmlu-{subject}-{i}", "choice",
+                    _choice_prompt(row[0], row[1:5]), row[5].strip().upper(),
+                    "choice", source=str(path), subject=subject))
+                if len(out) >= limit:
+                    return out
+    return out
+
+
+def local_arc_adapter(limit: int = 1000) -> list[dict]:
+    import pandas as pd
+    out = []
+    for path in sorted((_raw_root() / "arc").glob("*/*.parquet")):
+        split = path.stem
+        subset = path.parent.name
+        df = pd.read_parquet(path)
+        for _, r in df.iterrows():
+            choices = list(r["choices"]["text"])
+            labels = [str(x) for x in r["choices"]["label"]]
+            answer = str(r["answerKey"]).strip()
+            gold = labels.index(answer)
+            out.append(make_sample(
+                f"arc-{subset}-{split}-{r['id']}", "choice",
+                _choice_prompt(r["question"], choices), "ABCD"[gold],
+                "choice", source=str(path), subset=subset, split=split))
+            if len(out) >= limit:
+                return out
+    return out
+
+
+def local_bbh_adapter(limit: int = 1000) -> list[dict]:
+    out = []
+    for path in sorted((_raw_root() / "bbh" / "BIG-Bench-Hard-main" / "bbh").glob("*.json")):
+        if path.name == "README.md":
+            continue
+        task = path.stem
+        data = json.load(open(path))
+        for i, r in enumerate(data.get("examples", [])):
+            out.append(make_sample(
+                f"bbh-{task}-{i}", "reasoning",
+                f"{r['input']}\nAnswer concisely.", r["target"], "exact",
+                source=str(path), task=task))
+            if len(out) >= limit:
+                return out
+    return out
+
+
+def local_humaneval_adapter(limit: int = 1000) -> list[dict]:
+    path = _raw_root() / "humaneval" / "HumanEval.jsonl.gz"
+    out = []
+    with gzip.open(path, "rt") as f:
+        for i, line in enumerate(f):
+            r = json.loads(line)
+            gold = {"markers": [r["entry_point"] + "("]}
+            out.append(make_sample(f"humaneval-{r['task_id']}", "code",
+                                   r["prompt"], gold, "python_tests",
+                                   source=str(path), task_id=r["task_id"]))
+            if len(out) >= limit:
+                break
+    return out
+
+
+def local_mbpp_adapter(limit: int = 1000) -> list[dict]:
+    path = _raw_root() / "mbpp" / "sanitized-mbpp.json"
+    out = []
+    for r in json.load(open(path))[:limit]:
+        tests = r.get("test_list") or []
+        markers = sorted(set(re.findall(r"([A-Za-z_]\w*)\(", "\n".join(tests))))[:3]
+        out.append(make_sample(f"mbpp-{r['task_id']}", "code", r["prompt"],
+                               {"markers": markers}, "python_tests",
+                               source=str(path), task_id=r["task_id"]))
+    return out
+
+
+def local_raw_adapter(limit: int = 1000) -> list[dict]:
+    names = ["local_gsm8k", "local_mmlu", "local_arc", "local_bbh",
+             "local_humaneval", "local_mbpp"]
+    per = max(1, limit // len(names))
+    out = []
+    for name in names:
+        out.extend(DATASET_REGISTRY[name](per))
+    return out[:limit]
+
+
 def custom_jsonl_adapter(path: str, limit: int = 1000) -> list[dict]:
     """User's own commercial data in the unified schema. This is the MOST
     important source. Each line is already a sample dict."""
@@ -311,6 +431,13 @@ DATASET_REGISTRY = {
     "toolscale": toolscale_adapter,
     "mmlu": mmlu_choice_adapter,
     "humaneval": humaneval_adapter,
+    "local_gsm8k": local_gsm8k_adapter,
+    "local_mmlu": local_mmlu_adapter,
+    "local_arc": local_arc_adapter,
+    "local_bbh": local_bbh_adapter,
+    "local_humaneval": local_humaneval_adapter,
+    "local_mbpp": local_mbpp_adapter,
+    "local_raw": local_raw_adapter,
 }
 
 

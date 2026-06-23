@@ -40,6 +40,7 @@ def main(argv=None):
 
     sources = parse_sources(args.sources)
     all_samples = []
+    seen_ids, seen_prompts = set(), set()
     for src in sources:
         if src in DATASET_REGISTRY:
             print(f"[build] loading {src} (limit {args.limit_per_source}) ...", flush=True)
@@ -60,7 +61,16 @@ def main(argv=None):
                   f"{','.join(list_sources())} or a .jsonl path; skipping", flush=True)
             continue
         print(f"[build]   {src}: {len(samples)} samples", flush=True)
-        all_samples.extend(samples)
+        for s in samples:
+            sid = s.get("id")
+            prompt = s.get("prompt")
+            if sid in seen_ids or prompt in seen_prompts:
+                continue
+            if sid is not None:
+                seen_ids.add(sid)
+            if prompt is not None:
+                seen_prompts.add(prompt)
+            all_samples.append(s)
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     write_jsonl(all_samples, args.out)

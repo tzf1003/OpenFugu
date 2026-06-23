@@ -1,0 +1,23 @@
+[eval-flash] 20 samples, 5 workers, held_out=True
+Loading weights:   0%|          | 0/311 [00:00<?, ?it/s]Loading weights: 100%|██████████| 311/311 [00:00<00:00, 5060.95it/s]
+
+=== flash router eval (n=20, held_out=True) ===
+  best single worker : 1.000  (gpt_5_5)
+  random worker      : 0.950
+  trained router     : 0.950
+  oracle (per-q best): 1.000
+  lift vs best single: -5.0%
+  router/oracle      : 95.0%
+  per-worker score:
+    gpt_5_5          1.000
+    gemini_3_5_flash 0.900
+    deepseek_v4_flash 1.000
+    claude_haiku_4   0.800
+    kimi_k2_6        0.950
+  routing distribution:
+    gemini_3_5_flash 13 (65%)
+    deepseek_v4_flash 6 (30%)
+    kimi_k2_6        1 (5%)
+  per-domain router score:
+    math         0.950  (n=20)
+  WARNING: small sample — treat as smoke test, not a generalization claim.

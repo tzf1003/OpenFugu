@@ -1,0 +1,33 @@
+# Raw increment classifier training (2026-06-23)
+
+Inputs:
+  data/raw/* -> data/router_train_raw.jsonl
+  data/router_train_increment.jsonl
+  data/worker_profile_flash_increment_live.jsonl
+
+No-repeat guard:
+  skipped existing profiled sample ids from:
+    data/worker_profile_flash.jsonl
+    data/worker_profile_flash_eval.jsonl
+  classifier dataset: 42 rows, 42 unique ids
+  classifier profile: 210 rows, 210 unique sample/worker pairs
+
+Increment selected:
+  12 samples total
+  3 math, 3 choice, 3 reasoning, 3 code
+  60 live worker profile calls, no repeated old sample ids
+
+Training:
+  dataset: data/router_train_classifier.jsonl
+  profile: data/worker_profile_flash_classifier.jsonl
+  output: data/flash_head.npy
+  best single worker: 0.881
+  trained router: 0.952
+  oracle: 0.976
+  lift vs best single: +8.1%
+
+Held-out old GSM8K smoke:
+  best single worker: 1.000
+  trained router: 0.950
+  oracle: 1.000
+  note: broader raw-domain classifier trades off against the tiny saturated GSM8K holdout.
