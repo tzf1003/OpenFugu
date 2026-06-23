@@ -1,0 +1,17 @@
+[command]
+FUGU_VECTOR=artifacts/router_head_zero_svf.npy python3 train/train_pro_router.py --config configs/fugu.yaml --model Qwen/Qwen3-0.6B --vector artifacts/router_head_zero_svf.npy --dataset data/router_train_small.jsonl --out data/pro_head.npy --n-train 2 --iters 2 --popsize 4 --max-turns 3
+
+[pro-train] 2 samples, 6 workers, max_turns=3
+[pro-train] pool: CloudWorkerPool
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Loading weights:   0%|          | 0/311 [00:00<?, ?it/s]Loading weights: 100%|██████████| 311/311 [00:00<00:00, 5475.34it/s]
+[pro-train] router: Qwen3-0.6B + base vector
+[pro-train] base head rollout score=1.000
+/Users/xiaosong/Library/Python/3.14/lib/python/site-packages/cma/s.py:16: UserWarning: Could not import matplotlib.pyplot, therefore ``cma.plot()`` etc. is not available
+  _warnings.warn('Could not import matplotlib.pyplot, therefore'
+[iter 0] best=1.000 (base 1.000)
+[iter 1] best=1.000 (base 1.000)
+
+[result] pro head = 1.000 vs base 1.000
+[result] saved data/pro_head.npy  (10240 floats = 10x1024)
+NOTE — no improvement over base in 2 iters (small scale / saturated)

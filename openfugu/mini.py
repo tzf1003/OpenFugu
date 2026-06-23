@@ -127,7 +127,11 @@ class FuguRouter:
             self.model.to(device)
         self.device = next(self.model.parameters()).device
 
-        self._apply_svf(vec[:SVF_LEN])
+        svf = vec[:SVF_LEN]
+        if not np.any(svf):
+            self.svf_keys = []
+        else:
+            self._apply_svf(svf)
         # head: last 10240 -> (10, 1024) [EXEC]
         self.head = torch.from_numpy(vec[SVF_LEN:].copy()).float().reshape(HEAD_ROWS, HIDDEN).to(self.device)
 
@@ -180,7 +184,10 @@ class FuguRouter:
               agent_mask=None) -> dict:
         h = self._hidden(messages)
         logits = self.head @ h                      # (10,)
-        agent_logits, role_logits = logits[:N_AGENTS], logits[N_AGENTS:]
+        n_agents = logits.shape[0] - N_ROLES
+        if n_agents <= 0:
+            raise ValueError(f"router head needs agent rows + {N_ROLES} role rows")
+        agent_logits, role_logits = logits[:n_agents], logits[n_agents:]
         if agent_mask is not None:                  # adaptive k-of-n: only route to
             torch = self.torch                      # workers offered this turn [CODE]
             m = torch.as_tensor(agent_mask, dtype=torch.bool, device=agent_logits.device)
@@ -503,5 +510,3 @@ def main(argv=None):
 
 if __name__ == "__main__":
     sys.exit(main())
-
-

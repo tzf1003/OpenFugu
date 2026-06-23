@@ -37,7 +37,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 from verifiable_data import read_jsonl, score_sample          # noqa: E402
 from config import load_config                                # noqa: E402
 from cloud_pool import CloudWorkerPool, FakeCloudWorkerPool   # noqa: E402
-from mini import FuguRouter, Coordinator, HEAD_ROWS, HIDDEN   # noqa: E402
+from mini import FuguRouter, Coordinator, HEAD_ROWS, HIDDEN, N_AGENTS   # noqa: E402
 
 
 def make_pool(config, fake, answers=None):
@@ -56,6 +56,7 @@ def main(argv=None):
     ap.add_argument("--fake", action="store_true", help="offline FakeCloudWorkerPool (no API)")
     ap.add_argument("--n-train", type=int, default=8, help="cap samples per fitness eval")
     ap.add_argument("--iters", type=int, default=6)
+    ap.add_argument("--popsize", type=int, default=None)
     ap.add_argument("--max-turns", type=int, default=4)
     ap.add_argument("--sigma0", type=float, default=0.3)
     ap.add_argument("--seed", type=int, default=42)
@@ -98,7 +99,8 @@ def main(argv=None):
             # remap agent rows to the active worker count
             n = n_workers
             h = head_vec.reshape(HEAD_ROWS, HIDDEN)
-            router.head = torch.from_numpy(h[:n].copy()).float().to(router.device)
+            active = np.concatenate([h[:n], h[N_AGENTS:]], axis=0)
+            router.head = torch.from_numpy(active.copy()).float().to(router.device)
             # patch route to fold agent_id into [0,n)
             orig_route = FuguRouter.route
             def route_n(self, messages, sample=False, agent_mask=None):
@@ -122,8 +124,11 @@ def main(argv=None):
             coord = Coordinator(MockR(), worker_fn, max_turns=args.max_turns, sample=False)
         tot = 0.0
         for s in samples:
-            res = coord.run(s["prompt"])
-            tot += score_sample(s, res.final)
+            try:
+                res = coord.run(s["prompt"])
+                tot += score_sample(s, res.final)
+            except Exception as e:
+                print(f"[pro-train] sample {s['id']} failed: {str(e)[:120]}", flush=True)
         return tot / max(len(samples), 1)
 
     base_vec = base_head.cpu().numpy().ravel() if hasattr(base_head, "cpu") else np.asarray(base_head).ravel()
@@ -133,8 +138,10 @@ def main(argv=None):
     dim = HEAD_ROWS * HIDDEN
     best_vec, best_fit = base_vec.copy(), base_fit
     import cma
-    es = cma.CMAEvolutionStrategy(base_vec, args.sigma0,
-                                  {"seed": args.seed, "verbose": -9, "CMA_diagonal": True})
+    opts = {"seed": args.seed, "verbose": -9, "CMA_diagonal": True}
+    if args.popsize:
+        opts["popsize"] = args.popsize
+    es = cma.CMAEvolutionStrategy(base_vec, args.sigma0, opts)
     for it in range(args.iters):
         cands = es.ask()
         fits = [rollout_score(c) for c in cands]
@@ -150,8 +157,10 @@ def main(argv=None):
     if best_fit > base_fit + 0.01:
         print("PASS — per-step head improved over base rollout")
     else:
-        print(f"NOTE — no improvement over base in {args.iters} iters "
-              f"(small scale / fake pool / saturated)")
+        reason = "small scale / saturated"
+        if args.fake:
+            reason += " / fake pool"
+        print(f"NOTE — no improvement over base in {args.iters} iters ({reason})")
     return 0
 
 

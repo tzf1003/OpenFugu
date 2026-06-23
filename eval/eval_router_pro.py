@@ -29,7 +29,7 @@ sys.path.insert(0, os.path.join(_ROOT, "openfugu"))
 from verifiable_data import read_jsonl, score_sample              # noqa: E402
 from config import load_config                                    # noqa: E402
 from cloud_pool import CloudWorkerPool, FakeCloudWorkerPool       # noqa: E402
-from mini import FuguRouter, Coordinator, HEAD_ROWS, HIDDEN       # noqa: E402
+from mini import FuguRouter, Coordinator, HEAD_ROWS, HIDDEN, N_AGENTS   # noqa: E402
 
 
 def make_pool(config, fake, answers=None):
@@ -42,8 +42,13 @@ def run_strategy(router, worker_fn, samples, max_turns):
     coord = Coordinator(router, worker_fn, max_turns=max_turns, sample=False)
     scores, routing, domains = [], Counter(), defaultdict(list)
     for s in samples:
-        res = coord.run(s["prompt"])
-        sc = score_sample(s, res.final)
+        try:
+            res = coord.run(s["prompt"])
+            sc = score_sample(s, res.final)
+        except Exception as e:
+            print(f"[eval-pro] sample {s['id']} failed: {str(e)[:120]}", flush=True)
+            sc = 0.0
+            res = type("FailedRun", (), {"turns": [], "final": ""})()
         scores.append(sc)
         domains[s.get("domain", "?")].append(sc)
         for t in res.turns:
@@ -96,7 +101,8 @@ def main(argv=None):
             n = n_workers
             if head_vec is not None:
                 h = np.asarray(head_vec, dtype=np.float64).reshape(HEAD_ROWS, HIDDEN)
-                router.head = torch.from_numpy(h[:n].copy()).float().to(router.device)
+                active = np.concatenate([h[:n], h[N_AGENTS:]], axis=0)
+                router.head = torch.from_numpy(active.copy()).float().to(router.device)
             orig_route = FuguRouter.route
             def route_n(self, messages, sample=False, agent_mask=None):
                 r = orig_route(self, messages, sample=sample, agent_mask=agent_mask)

@@ -40,7 +40,7 @@ from cloud_pool import CloudWorkerPool, FakeCloudWorkerPool, WorkerPool  # noqa:
 # trained router vector is available it is wrapped as a FuguRouter; otherwise
 # a FallbackRouter picks workers deterministically (and logs that clearly).
 try:
-    from mini import (FuguRouter, Coordinator, MockWorker, HEAD_ROWS, HIDDEN)  # noqa: E402
+    from mini import (FuguRouter, Coordinator, MockWorker, HEAD_ROWS, HIDDEN, N_AGENTS)  # noqa: E402
     HAVE_MINI = True
 except Exception:
     HAVE_MINI = False
@@ -186,7 +186,8 @@ def _build_pro_factory(config, model_dir, vector_path, head_path, pool):
                 # active worker count by taking the first n agent rows.
                 if h.shape == (HEAD_ROWS * HIDDEN,):
                     full = h.reshape(HEAD_ROWS, HIDDEN)
-                    head = router.torch.from_numpy(full[:n].copy()).float().to(router.device)
+                    active = np.concatenate([full[:n], full[N_AGENTS:]], axis=0)
+                    head = router.torch.from_numpy(active.copy()).float().to(router.device)
                     # patch route to use the n-row head
                     router.head = head
                     orig_route = router.route

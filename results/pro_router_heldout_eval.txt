@@ -1,0 +1,28 @@
+[command]
+FUGU_VECTOR=artifacts/router_head_zero_svf.npy python3 eval/eval_router_pro.py --config configs/fugu.yaml --model Qwen/Qwen3-0.6B --vector artifacts/router_head_zero_svf.npy --dataset data/router_eval.jsonl --head data/pro_head.npy --max-turns 3 --n 2 --held-out
+
+[eval-pro] 2 samples, 6 workers, held_out=True
+Loading weights:   0%|          | 0/311 [00:00<?, ?it/s]Loading weights: 100%|██████████| 311/311 [00:00<00:00, 4817.16it/s]
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+[eval-pro] router: Qwen3-0.6B
+  base head  : 1.000  (max_turns=3)
+  trained    : 1.000  (max_turns=3)
+  max_turns sweep (base head):
+    turns=2: 1.000
+    turns=3: 1.000
+    turns=5: 1.000
+
+=== pro router eval (n=2, held_out=True) ===
+  base head score      : 1.000
+  trained head score   : 1.000
+  lift vs base         : +0.0%
+  per-domain (base head):
+    math         1.000  (n=2)
+  per-domain (trained):
+    math         1.000  (n=2)
+  routing distribution (base head):
+    Worker     agent=0  1
+    Verifier   agent=1  1
+    Worker     agent=4  1
+    Verifier   agent=4  1
+  WARNING: small sample — treat as smoke test, not a generalization claim.
