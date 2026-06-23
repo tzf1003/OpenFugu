@@ -73,7 +73,7 @@ export async function viewWorkers(main, ui) {
         ui.el('span', { class: 'text-faint text-sm' }, '拖拽行可调整顺序，head 依赖此顺序')));
     container.appendChild(card);
     container.appendChild(ui.el('div', { class: 'warn-box', style: 'margin-top:12px' },
-      '危险：改 worker 顺序会让旧 head 的行语义错位；新增/删除 worker 后旧 flash head 维度会不匹配。'));
+      '危险：改 worker 顺序会让旧 head 的行语义错位；新增/删除 worker 后旧 flash head 维度会不匹配；pro head 可取前 n 个 agent rows，但语义仍依赖训练时的 worker 排列。'));
 
     function policySel(w, after) {
       const s = ui.el('select', { class: 'text-sm', style: 'width:auto' });

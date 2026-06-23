@@ -134,6 +134,36 @@ class Store:
             self._save_json(self.settings_path, self._settings.to_dict())
             return h
 
+    def rollback_head(self, head_type: str) -> dict | None:
+        """Deactivate the current head and re-activate the previous version.
+
+        "Previous" = the most recently created head of the same type that is
+        not the currently-active one. Returns the newly activated head, or
+        None if there is no previous version to roll back to.
+        """
+        with self._lock:
+            cur_id = self._settings.flash_head if head_type == "flash" else self._settings.pro_head
+            if not cur_id:
+                return None
+            same_type = [h for h in self._heads if h.get("type") == head_type and h["id"] != cur_id]
+            if not same_type:
+                return None
+            # pick the most recently created non-active head
+            same_type.sort(key=lambda h: h.get("created_at", 0), reverse=True)
+            prev = same_type[0]
+            for x in self._heads:
+                if x.get("type") == head_type:
+                    x["active"] = (x["id"] == prev["id"])
+                    if x["id"] == cur_id:
+                        x["status"] = "rolled_back"
+            if head_type == "flash":
+                self._settings.flash_head = prev["id"]
+            else:
+                self._settings.pro_head = prev["id"]
+            self._save_json(self.heads_path, self._heads)
+            self._save_json(self.settings_path, self._settings.to_dict())
+            return prev
+
     def _seed_heads(self):
         """Auto-register existing head files on first run."""
         if self._heads:

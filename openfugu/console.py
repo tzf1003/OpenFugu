@@ -42,6 +42,7 @@ class Console:
         self.root = root
         self.store = Store()
         self.tasks = TaskRunner(self.store, root)
+        self.endpoint_health: dict[str, dict] = {}
 
     def cfg(self) -> FuguConfig:
         return load_config(self.store.settings().config_path)
@@ -275,6 +276,45 @@ def _read_requests(limit=200) -> list[dict]:
     return out
 
 
+def _model_stats(cfg: FuguConfig, cid: str) -> dict:
+    worker_ids = [wid for wid, w in cfg.workers.items() if w.canonical_model == cid]
+    eps = cfg.endpoints_for(cid, only_enabled=False)
+    total_cost = sum(e.cost for e in eps)
+    import glob
+    profile_score = None
+    profile_path = None
+    files = glob.glob(os.path.join(CONSOLE.root, "data", "worker_profile*.jsonl"))
+    for p in sorted(files, key=os.path.getmtime, reverse=True):
+        try:
+            with open(p) as f:
+                scores = []
+                for line in f:
+                    if not line.strip():
+                        continue
+                    r = json.loads(line)
+                    if r.get("worker_id") in worker_ids:
+                        scores.append(r.get("score", 0.0))
+                if scores:
+                    profile_path = os.path.relpath(p, CONSOLE.root)
+                    profile_score = round(sum(scores) / len(scores), 3)
+                    break
+        except Exception:
+            continue
+    reqs = _read_requests(500)
+    model_reqs = [r for r in reqs if r.get("worker") in worker_ids]
+    avg_latency = None
+    error_rate = None
+    if model_reqs:
+        lats = [r.get("latency", 0) for r in model_reqs if r.get("latency") is not None]
+        if lats:
+            avg_latency = round(sum(lats) / len(lats), 3)
+        errs = sum(1 for r in model_reqs if r.get("status") == "error")
+        error_rate = round(errs / len(model_reqs) * 100, 1) if model_reqs else 0
+    return {"profile_score": profile_score, "profile_path": profile_path,
+            "avg_latency": avg_latency, "error_rate": error_rate,
+            "total_cost": round(total_cost, 4) if total_cost else 0}
+
+
 # ---- API dispatch ----------------------------------------------------------
 def handle_api(method: str, path: str, query: dict, body: dict) -> tuple[int, dict]:
     """Return (status_code, json_body). 404 -> (404, {...})."""
@@ -313,7 +353,8 @@ def handle_api(method: str, path: str, query: dict, body: dict) -> tuple[int, di
             in_flash = cid in [cfg.canonical_model_of(w) for w in cfg.worker_ids("openfugu-flash", False)]
             in_pro = cid in [cfg.canonical_model_of(w) for w in cfg.worker_ids("openfugu-pro", False)]
             items.append({**_dataclass_to_dict(cm), "endpoint_count": len(eps),
-                          "worker_count": len(workers), "in_flash": in_flash, "in_pro": in_pro})
+                          "worker_count": len(workers), "in_flash": in_flash, "in_pro": in_pro,
+                          **_model_stats(cfg, cid)})
         return 200, {"items": items}
 
     if path == "/api/canonical-models" and method == "POST":
@@ -404,6 +445,7 @@ def handle_api(method: str, path: str, query: dict, body: dict) -> tuple[int, di
             d["canonical_display"] = cfg.canonical_models.get(
                 e.canonical_model, CanonicalModel(id=e.canonical_model,
                                                   display_name=e.canonical_model)).display_name
+            d["health"] = CONSOLE.endpoint_health.get(eid, {})
             items.append(d)
         return 200, {"items": items}
 
@@ -627,6 +669,13 @@ def handle_api(method: str, path: str, query: dict, body: dict) -> tuple[int, di
             c.store.update_settings({"pro_head": ""})
         return 200, h
 
+    if path == "/api/heads/rollback" and method == "POST":
+        ht = body.get("type", "flash")
+        h = c.store.rollback_head(ht)
+        if not h:
+            return 404, {"error": f"no previous {ht} head to roll back to"}
+        return 200, h
+
     if path.startswith("/api/heads/") and method == "DELETE":
         hid = path.split("/")[-1]
         ok = c.store.delete_head(hid)
@@ -635,11 +684,23 @@ def handle_api(method: str, path: str, query: dict, body: dict) -> tuple[int, di
     # ---- requests ----
     if path == "/api/requests" and method == "GET":
         reqs = _read_requests(500)
-        # filters
-        for key in ("model", "worker", "status"):
+        # filters: model, worker, status, endpoint, since, until
+        for key in ("model", "worker", "status", "endpoint"):
             v = query.get(key)
             if v:
                 reqs = [r for r in reqs if str(r.get(key, "")).lower() == v.lower()]
+        since = query.get("since")
+        until = query.get("until")
+        if since:
+            try:
+                reqs = [r for r in reqs if r.get("ts", 0) >= float(since)]
+            except ValueError:
+                pass
+        if until:
+            try:
+                reqs = [r for r in reqs if r.get("ts", 0) <= float(until)]
+            except ValueError:
+                pass
         return 200, {"items": list(reversed(reqs))[-200:]}
 
     # ---- playground ----
@@ -705,13 +766,19 @@ def _smoke_test(body: dict) -> tuple[int, dict]:
         req = urllib.request.Request(url, data=payload, headers=headers)
         with urllib.request.urlopen(req, timeout=20) as r:
             data = json.loads(r.read())
-            return 200, {"ok": True, "latency_ms": round((time.time() - t0) * 1000),
+            lat = round((time.time() - t0) * 1000)
+            CONSOLE.endpoint_health[eid] = {"ok": True, "latency_ms": lat, "ts": time.time()}
+            return 200, {"ok": True, "latency_ms": lat,
                          "reply": (data.get("choices", [{}])[0].get("message", {}).get("content", ""))[:100]}
     except urllib.error.HTTPError as e:
-        return 200, {"ok": False, "latency_ms": round((time.time() - t0) * 1000),
+        lat = round((time.time() - t0) * 1000)
+        CONSOLE.endpoint_health[eid] = {"ok": False, "latency_ms": lat, "error": f"HTTP {e.code}", "ts": time.time()}
+        return 200, {"ok": False, "latency_ms": lat,
                      "error": f"HTTP {e.code}: {e.read().decode()[:200]}"}
     except Exception as e:
-        return 200, {"ok": False, "latency_ms": round((time.time() - t0) * 1000), "error": str(e)}
+        lat = round((time.time() - t0) * 1000)
+        CONSOLE.endpoint_health[eid] = {"ok": False, "latency_ms": lat, "error": str(e), "ts": time.time()}
+        return 200, {"ok": False, "latency_ms": lat, "error": str(e)}
 
 
 # ---- HTTP handler ----------------------------------------------------------

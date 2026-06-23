@@ -1,5 +1,5 @@
 export async function viewRequests(main, ui) {
-  const filters = { model: '', worker: '', status: '' };
+  const filters = { model: '', worker: '', status: '', endpoint: '', since: '', until: '' };
 
   main.appendChild(ui.el('div', { class: 'topbar' },
     ui.el('h1', {}, '请求与路由观测'),
@@ -12,11 +12,15 @@ export async function viewRequests(main, ui) {
   barBody.appendChild(field('模型', select('f_model', ['', 'openfugu-flash', 'openfugu-pro'])));
   barBody.appendChild(field('状态', select('f_status', ['', 'ok', 'error'])));
   barBody.appendChild(field('Worker', ui.el('input', { id: 'f_worker', placeholder: 'worker id' })));
+  barBody.appendChild(field('Endpoint', ui.el('input', { id: 'f_endpoint', placeholder: 'endpoint id' })));
+  barBody.appendChild(field('开始时间', ui.el('input', { id: 'f_since', type: 'datetime-local' })));
+  barBody.appendChild(field('结束时间', ui.el('input', { id: 'f_until', type: 'datetime-local' })));
   barBody.appendChild(ui.el('div', { class: 'form-row', style: 'margin:0' },
     ui.btn('筛选', { kind: 'primary', onClick: () => load() }),
     ui.btn('清除', { onClick: () => {
       document.getElementById('f_model').value = ''; document.getElementById('f_status').value = '';
-      document.getElementById('f_worker').value = ''; load(); } })));
+      document.getElementById('f_worker').value = ''; document.getElementById('f_endpoint').value = '';
+      document.getElementById('f_since').value = ''; document.getElementById('f_until').value = ''; load(); } })));
   bar.appendChild(barBody);
   main.appendChild(bar);
 
@@ -28,10 +32,16 @@ export async function viewRequests(main, ui) {
     filters.model = document.getElementById('f_model')?.value || '';
     filters.status = document.getElementById('f_status')?.value || '';
     filters.worker = document.getElementById('f_worker')?.value || '';
+    filters.endpoint = document.getElementById('f_endpoint')?.value || '';
+    filters.since = ts('f_since');
+    filters.until = ts('f_until');
     const q = {};
     if (filters.model) q.model = filters.model;
     if (filters.status) q.status = filters.status;
     if (filters.worker) q.worker = filters.worker;
+    if (filters.endpoint) q.endpoint = filters.endpoint;
+    if (filters.since) q.since = filters.since;
+    if (filters.until) q.until = filters.until;
     holder.innerHTML = '';
     holder.appendChild(ui.el('div', { class: 'empty' }, ui.el('span', { class: 'spinner' }), ' 加载中…'));
     const data = await ui.GET('/api/requests', q);
@@ -62,6 +72,7 @@ export async function viewRequests(main, ui) {
       String(r.turns ?? 1),
       ui.badge(r.status || 'ok', r.status === 'error' ? 'red' : 'green'),
       ui.el('span', { class: 'mono text-sm' }, r.worker || '—'),
+      ui.el('span', { class: 'mono text-sm' }, r.endpoint || '—'),
       ui.el('span', { class: 'mono text-sm' }, r.route_reason || '—'),
       ui.el('span', { class: 'mono text-sm' }, r.terminated_by || '—'),
       ui.el('div', { class: 'btn-row' },
@@ -69,7 +80,12 @@ export async function viewRequests(main, ui) {
         ui.btn('详情', { sm: true, onClick: () => showDetail(ui, r) })),
     ]);
     holder.appendChild(ui.card('请求列表',
-      ui.table(['时间', '模型', '耗时', 'turns', '状态', 'worker', 'route_reason', 'terminated_by', '操作'], rows)));
+      ui.table(['时间', '模型', '耗时', 'turns', '状态', 'worker', 'endpoint', 'route_reason', 'terminated_by', '操作'], rows)));
+  }
+
+  function ts(id) {
+    const v = document.getElementById(id)?.value;
+    return v ? Math.floor(new Date(v).getTime() / 1000) : '';
   }
 
   function field(label, input) {

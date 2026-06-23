@@ -2,6 +2,8 @@ export async function viewHeads(main, ui) {
   main.appendChild(ui.el('div', { class: 'topbar' },
     ui.el('h1', {}, 'Head 版本管理'),
     ui.el('div', { class: 'topbar-actions' },
+      ui.btn('回滚 flash', { icon: 'refresh', onClick: () => rollback('flash') }),
+      ui.btn('回滚 pro', { icon: 'refresh', onClick: () => rollback('pro') }),
       ui.btn('注册 Head', { icon: 'plus', kind: 'primary', onClick: () => showForm() }),
       ui.btn('刷新', { icon: 'refresh', onClick: () => ui.refresh() }))));
 
@@ -45,6 +47,10 @@ export async function viewHeads(main, ui) {
     if (!confirm(`下线 ${h.id}？`)) return;
     const r = await ui.POST(`/api/heads/${h.id}/deactivate`);
     ui.toast(r.error || '已下线', r.error ? 'err' : 'ok'); ui.refresh();
+  }
+  async function rollback(type) {
+    const r = await ui.POST('/api/heads/rollback', { type });
+    ui.toast(r.error || `已回滚到 ${r.id}`, r.error ? 'err' : 'ok'); ui.refresh();
   }
   async function del(h) {
     if (!confirm(`删除 head 版本 ${h.id}？`)) return;

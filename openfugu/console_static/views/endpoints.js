@@ -24,6 +24,7 @@ export async function viewEndpoints(main, ui) {
     ui.el('span', { class: 'mono text-sm' }, e.api_key_env ? `${e.api_key_env} ****` : '—'),
     String(e.priority),
     String(e.cost || 0),
+    healthCell(e),
     ui.el('div', { class: 'flex aic gap' },
       ui.dot(e.enabled),
       currentByCm[e.canonical_model] === e.id ? ui.badge('当前', 'green') : null),
@@ -35,8 +36,16 @@ export async function viewEndpoints(main, ui) {
       ui.btn('', { sm: true, kind: 'danger', icon: 'trash', onClick: () => del(e) })),
   ]);
   main.appendChild(ui.card('Endpoint 列表',
-    rows.length ? ui.table(['Endpoint', 'provider_model', 'api_base_env', 'api_key_env', '优先级', '成本', '状态', '操作'], rows)
+    rows.length ? ui.table(['Endpoint', 'provider_model', 'api_base_env', 'api_key_env', '优先级', '成本', '健康', '状态', '操作'], rows)
       : ui.el('div', { class: 'empty' }, '暂无接入源。密钥只保存环境变量名，不保存明文。')));
+
+  function healthCell(e) {
+    const h = e.health || {};
+    if (h.ok == null) return ui.el('span', { class: 'text-faint text-sm' }, '未测试');
+    return ui.el('div', { class: 'flex aic gap' },
+      ui.badge(h.ok ? 'ok' : 'fail', h.ok ? 'green' : 'red'),
+      ui.el('span', { class: 'mono text-sm' }, h.latency_ms == null ? '—' : `${h.latency_ms}ms`));
+  }
 
   async function setCurrent(e) {
     const r = await ui.POST(`/api/endpoints/${e.id}/set-current`);

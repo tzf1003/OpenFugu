@@ -16,6 +16,10 @@ export async function viewModels(main, ui) {
       ui.badge(m.status, m.status === 'active' ? 'green' : m.status === 'draft' ? 'amber' : 'gray')),
     String(m.endpoint_count),
     String(m.worker_count),
+    m.profile_score == null ? '—' : String(m.profile_score),
+    m.avg_latency == null ? '—' : `${m.avg_latency}s`,
+    m.error_rate == null ? '—' : `${m.error_rate}%`,
+    String(m.total_cost ?? 0),
     ui.el('div', { class: 'btn-row' },
       m.in_flash ? ui.badge('flash', 'blue') : null,
       m.in_pro ? ui.badge('pro', 'purple') : null,
@@ -25,7 +29,7 @@ export async function viewModels(main, ui) {
       ui.btn('', { sm: true, kind: 'danger', icon: 'trash', onClick: () => del(m) })),
   ]);
   main.appendChild(ui.card('标准模型列表',
-    rows.length ? ui.table(['模型', 'family', '能力', '状态', 'endpoints', 'workers', '操作'], rows)
+    rows.length ? ui.table(['模型', 'family', '能力', '状态', 'endpoints', 'workers', 'profile', '延迟', '错误率', '成本', '操作'], rows)
       : ui.el('div', { class: 'empty' }, '暂无标准模型')));
 
   function showWizard() {
