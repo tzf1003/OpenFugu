@@ -26,7 +26,7 @@ Run (live cloud workers via litellm):
   python openfugu/product_serve.py --config configs/fugu.yaml --port 8090
 """
 from __future__ import annotations
-import argparse, json, os, sys, time, uuid
+import argparse, json, os, sys, threading, time, traceback, uuid
 from dataclasses import dataclass
 from typing import Callable
 
@@ -61,6 +61,7 @@ class FlashRouter:
         self.worker_ids = config.worker_ids(model_name)
         self.round_robin = round_robin
         self._rr = 0
+        self.lock = threading.Lock()
         self.router = None
         self.head = None
         if head_path and model_dir:
@@ -80,8 +81,9 @@ class FlashRouter:
         """Return (worker_id, reason)."""
         if self.router is not None and self.head is not None:
             import torch
-            h = self.router._hidden([{"role": "user", "content": query}])
-            wid_idx = int(torch.argmax(self.head @ h))
+            with self.lock:
+                h = self.router._hidden([{"role": "user", "content": query}])
+                wid_idx = int(torch.argmax(self.head @ h))
             return self.worker_ids[wid_idx], "trained_head"
         if self.round_robin:
             wid = self.worker_ids[self._rr % len(self.worker_ids)]
@@ -173,32 +175,65 @@ def _chat_response(text: str, model: str, usage: dict) -> dict:
     }
 
 
-def _build_pro_factory(config, model_dir, vector_path, head_path, pool):
+class SharedHeadRouter:
+    """Router view that reuses an existing Qwen backbone with its own head."""
+    def __init__(self, base_router, head, lock):
+        self.base = base_router
+        self.head = head
+        self.lock = lock
+
+    def route(self, messages, sample=False, agent_mask=None):
+        with self.lock:
+            h = self.base._hidden(messages)
+            logits = self.head @ h
+            n_agents = logits.shape[0] - 3
+            if n_agents <= 0:
+                raise ValueError("pro router head needs agent rows + role rows")
+            agent_logits, role_logits = logits[:n_agents], logits[n_agents:]
+            if agent_mask is not None:
+                torch = self.base.torch
+                m = torch.as_tensor(agent_mask, dtype=torch.bool, device=agent_logits.device)
+                agent_logits = agent_logits.masked_fill(~m, float("-inf"))
+            agent_id = self.base._pick(agent_logits, sample)
+            role_id = self.base._pick(role_logits, sample)
+        from mini import ROLE_NAMES
+        return {
+            "agent_id": agent_id,
+            "role_id": role_id,
+            "role_name": ROLE_NAMES[role_id],
+            "agent_logits": agent_logits.detach().cpu().numpy(),
+            "role_logits": role_logits.detach().cpu().numpy(),
+        }
+
+
+def _build_pro_factory(config, model_dir, vector_path, head_path, pool,
+                       shared_router=None, shared_lock=None):
     """Return a factory (worker_ids) -> (router, worker_fn, reason)."""
     have_trained = bool(model_dir and (head_path or vector_path))
     if have_trained and HAVE_MINI:
+        cache = {}
+
         def factory(worker_ids):
-            router = FuguRouter(model_dir, vector_path or _base_vector(), seed=0)
-            if head_path:
-                h = np.load(head_path).astype(np.float64)
-                n = len(worker_ids)
-                # pro head is full HEAD_ROWS x HIDDEN; remap agent rows to the
-                # active worker count by taking the first n agent rows.
-                if h.shape == (HEAD_ROWS * HIDDEN,):
-                    full = h.reshape(HEAD_ROWS, HIDDEN)
-                    active = np.concatenate([full[:n], full[N_AGENTS:]], axis=0)
-                    head = router.torch.from_numpy(active.copy()).float().to(router.device)
-                    # patch route to use the n-row head
-                    router.head = head
-                    orig_route = router.route
-                    def route_n(messages, sample=False, agent_mask=None):
-                        r = orig_route(messages, sample=sample, agent_mask=agent_mask)
-                        # remap agent_id into [0, n)
-                        r["agent_id"] = r["agent_id"] % n
-                        return r
-                    router.route = route_n
+            key = tuple(worker_ids)
+            if key not in cache:
+                base_router = shared_router or FuguRouter(model_dir, vector_path or _base_vector(), seed=0)
+                if head_path:
+                    h = np.load(head_path).astype(np.float64)
+                    n = len(worker_ids)
+                    # pro head is full HEAD_ROWS x HIDDEN; remap agent rows to the
+                    # active worker count by taking the first n agent rows.
+                    if h.shape == (HEAD_ROWS * HIDDEN,):
+                        full = h.reshape(HEAD_ROWS, HIDDEN)
+                        active = np.concatenate([full[:n], full[N_AGENTS:]], axis=0)
+                        head = base_router.torch.from_numpy(active.copy()).float().to(base_router.device)
+                        lock = shared_lock or threading.Lock()
+                        router = SharedHeadRouter(base_router, head, lock)
+                    else:
+                        raise ValueError(f"pro head must be {HEAD_ROWS * HIDDEN} floats, got {h.shape}")
                 else:
-                    raise ValueError(f"pro head must be {HEAD_ROWS * HIDDEN} floats, got {h.shape}")
+                    router = base_router
+                cache[key] = router
+            router = cache[key]
             worker_fn = pool.as_coordinator_worker(worker_ids)
             return router, worker_fn, "trained_trinity_head"
         return factory
@@ -256,6 +291,8 @@ def make_handler(state: ServerState):
                 else:
                     self._send(400, {"error": f"unknown model '{model}'; use openfugu-flash or openfugu-pro"})
             except Exception as e:
+                traceback.print_exc(file=sys.stderr)
+                sys.stderr.flush()
                 self._send(500, {"error": str(e)})
 
         def log_message(self, *a):
@@ -292,7 +329,9 @@ def main(argv=None):
                         round_robin=args.round_robin)
     print(f"[serve] flash router: {_router_label(flash)}", flush=True)
 
-    pro_factory = _build_pro_factory(config, model_dir, vector, args.pro_head, pool)
+    pro_factory = _build_pro_factory(config, model_dir, vector, args.pro_head, pool,
+                                     shared_router=flash.router,
+                                     shared_lock=flash.lock)
     # probe once to report the pro router mode
     _wid = config.worker_ids("openfugu-pro")
     _r, _w, reason = pro_factory(_wid)

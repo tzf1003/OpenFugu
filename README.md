@@ -108,6 +108,22 @@ pool.
 Both are served behind one OpenAI-compatible endpoint. Credentials come from the
 environment via litellm — **never** from config or code.
 
+### Docker 0.1
+
+The `docker-compose.yml` package serves the trained 0.1 flash/pro heads behind
+the same OpenAI-compatible API. It reads secrets from local `.env` and keeps
+large raw training data out of the image.
+
+```bash
+docker compose build
+docker compose up -d
+curl localhost:8090/v1/models
+```
+
+The compose service sets `FUGU_MODEL`, `FUGU_VECTOR`, `FUGU_FLASH_HEAD`,
+`FUGU_PRO_HEAD`, and the 11-model `OPENAI_MODEL` list. Put `OPENAI_API_KEY`,
+`OPENAI_API_BASE`, `FUGU_API_KEY`, and `FUGU_BASE_URL` in `.env`.
+
 ### Configure
 
 `configs/fugu.yaml` describes the two models and the worker pool. Edit it to

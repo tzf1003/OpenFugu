@@ -1,0 +1,38 @@
+OpenFugu 0.1 Docker Compose smoke test
+======================================
+
+Date: 2026-06-23
+Image: openfugu:0.1
+Container: openfugu-0-1
+Compose service: openfugu
+Port: 8090
+
+Build:
+- docker compose build: PASS
+
+Deployment:
+- docker compose up -d --force-recreate: PASS
+- docker compose ps: container healthy, 0.0.0.0:8090->8090/tcp
+
+API checks:
+- GET /health: {"status": "ok"}
+- GET /v1/models: lists openfugu-flash and openfugu-pro
+
+Live model checks:
+- openfugu-flash prompt "What is 17 + 25?": PASS, answer 42
+  - route: trained_head
+  - selected worker: kimi_k2_6
+  - turns: 1
+- openfugu-pro prompt "What is 18 + 24?": PASS, answer 42
+  - route: trained_trinity_head
+  - terminated_by: verifier_accept
+  - turns: 3
+
+Concurrency check:
+- Parallel flash/pro requests: PASS
+- Container remained healthy after concurrent router use.
+
+Notes:
+- docker-compose.yml reads credentials from .env via env_file and sets the
+  runtime OpenFugu paths/model selection explicitly.
+- Secrets were not recorded in this smoke log.

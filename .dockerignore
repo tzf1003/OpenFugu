@@ -1,0 +1,17 @@
+.git/
+.agents/
+.claude/
+.codex/
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+data/raw/
+models/
+checkpoints/
+*.safetensors
+results/*.out
+*.log
+conductor_*_out/
+conductor_toolscale_*/
