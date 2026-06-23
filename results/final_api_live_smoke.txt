@@ -1,0 +1,31 @@
+# Final API live smoke test (2026-06-23)
+
+Server:
+  python3 openfugu/product_serve.py --config configs/fugu.yaml --live --debug --model-dir Qwen/Qwen3-0.6B --vector artifacts/router_head_zero_svf.npy --flash-head data/flash_head.npy --pro-head data/pro_head.npy --port 8090
+
+GET /v1/models:
+  openfugu-flash
+  openfugu-pro
+
+POST /v1/chat/completions, model=openfugu-flash:
+  prompt: What is 17 + 25? Answer with only the number.
+  answer: 42
+  mode: per_question
+  turns: 1
+  selected_worker: gpt_5_5
+  route_reason: trained_head
+
+POST /v1/chat/completions, model=openfugu-pro:
+  prompt: What is 18 + 24? Answer with only the number.
+  answer: 42
+  mode: per_step
+  turns: 3
+  route_reason: trained_trinity_head
+  terminated_by: verifier_accept
+  trace:
+    0 Worker   agent=4 reply=42
+    1 Thinker  agent=1
+    2 Verifier agent=1 reply=ACCEPT
+
+Result:
+  PASS - both final API models ran against the live CloudWorkerPool.
