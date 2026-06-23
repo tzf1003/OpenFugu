@@ -25,3 +25,8 @@ results/*.out
 *.log
 conductor_*_out/
 conductor_toolscale_*/
+
+# console runtime state
+data/console/
+data/request_log.jsonl
+data/worker_profile_test.jsonl

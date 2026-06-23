@@ -137,9 +137,10 @@ def run_flash(state: ServerState, messages: list[dict], debug: bool) -> dict:
     # flash: ONE worker call, full answer
     reply = state.pool.call(wid, messages, role="Worker")
     usage = {"fugu_mode": "per_question", "fugu_turns": 1}
-    if debug:
-        usage["fugu_selected_worker"] = wid
-        usage["fugu_route_reason"] = reason
+    # routing metadata is always recorded so the request log can show it;
+    # the full per-step trace stays behind the debug flag.
+    usage["fugu_selected_worker"] = wid
+    usage["fugu_route_reason"] = reason
     return _chat_response(reply, "openfugu-flash", usage)
 
 
@@ -151,10 +152,12 @@ def run_pro(state: ServerState, messages: list[dict], debug: bool) -> dict:
     coord = Coordinator(router, worker_fn, max_turns=model.max_turns, sample=False)
     res = coord.run(query, verbose=False)
     usage = {"fugu_mode": "per_step", "fugu_turns": len(res.turns)}
+    # router reason + termination are cheap; log them always for observability.
+    usage["fugu_route_reason"] = reason
+    usage["fugu_terminated_by"] = res.terminated_by
     if debug:
-        usage["fugu_route_reason"] = reason
-        usage["fugu_terminated_by"] = res.terminated_by
         usage["fugu_trace"] = [{"turn": t.turn, "agent_id": t.agent_id,
+                                "worker": worker_ids[t.agent_id] if t.agent_id < len(worker_ids) else None,
                                 "role": t.role_name, "reply": t.reply[:120]}
                                for t in res.turns]
     return _chat_response(res.final, "openfugu-pro", usage)
@@ -276,6 +279,12 @@ def make_handler(state: ServerState):
         def do_POST(self):
             if self.path.rstrip("/") != "/v1/chat/completions":
                 self._send(404, {"error": "not found"}); return
+            t0 = time.time()
+            resp = None
+            status = "ok"
+            error = None
+            model = "openfugu-flash"
+            messages = []
             try:
                 n = int(self.headers.get("Content-Length", 0))
                 req = json.loads(self.rfile.read(n) or b"{}")
@@ -285,15 +294,20 @@ def make_handler(state: ServerState):
                 model = req.get("model", "openfugu-flash")
                 debug = bool(req.get("debug", False)) or state.debug
                 if model == "openfugu-flash":
-                    self._send(200, run_flash(state, messages, debug))
+                    resp = run_flash(state, messages, debug)
                 elif model == "openfugu-pro":
-                    self._send(200, run_pro(state, messages, debug))
+                    resp = run_pro(state, messages, debug)
                 else:
                     self._send(400, {"error": f"unknown model '{model}'; use openfugu-flash or openfugu-pro"})
+                    _log_request(state, model, messages, debug, t0, None, "error", f"unknown model {model}")
+                    return
+                self._send(200, resp)
             except Exception as e:
                 traceback.print_exc(file=sys.stderr)
                 sys.stderr.flush()
                 self._send(500, {"error": str(e)})
+                status = "error"; error = str(e)
+            _log_request(state, model, messages, debug, t0, resp, status, error)
 
         def log_message(self, *a):
             pass
@@ -348,6 +362,33 @@ def main(argv=None):
 def _router_label(flash: FlashRouter) -> str:
     wid, reason = flash.select("ping")
     return f"{reason} (first worker={wid})"
+
+
+def _log_request(state, model, messages, debug, t0, resp=None, status="ok", error=None):
+    """Append a compact request record to data/request_log.jsonl for the console.
+
+    Routing metadata (selected worker, route reason, turn count, termination) is
+    pulled from the response `usage` so the log reflects the real routing decision
+    rather than a stub. The per-step trace is only recorded when debug was on."""
+    try:
+        dt = round(time.time() - t0, 3)
+        usage = (resp or {}).get("usage", {}) if isinstance(resp, dict) else {}
+        turns = usage.get("fugu_turns", 1)
+        trace = usage.get("fugu_trace")
+        rec = {"ts": time.time(), "model": model, "latency": dt,
+               "turns": turns, "status": status, "error": error,
+               "worker": usage.get("fugu_selected_worker"),
+               "endpoint": None, "route_reason": usage.get("fugu_route_reason"),
+               "terminated_by": usage.get("fugu_terminated_by"),
+               "trace": trace,
+               "query": (messages[-1].get("content", "")[:120] if messages else "")}
+        log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+        os.makedirs(log_dir, exist_ok=True)
+        path = os.path.join(log_dir, "request_log.jsonl")
+        with open(path, "a") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":
