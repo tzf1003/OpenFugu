@@ -32,7 +32,7 @@ export const ui = {
       if (k === 'class') e.className = v;
       else if (k === 'html') e.innerHTML = v;
       else if (k === 'text') e.textContent = v;
-      else if (k.startsWith('on') && typeof v === 'function') e.addEventListener(k.slice(2), v);
+      else if (k.startsWith('on') && typeof v === 'function') e.addEventListener(k.slice(2).toLowerCase(), v);
       else if (v !== null && v !== undefined && v !== false) e.setAttribute(k, v);
     }
     for (const c of children.flat()) {
