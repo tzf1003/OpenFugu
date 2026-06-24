@@ -120,6 +120,12 @@ docker compose up -d
 curl localhost:8090/v1/models
 ```
 
+Fast code-only deploy after the image exists:
+
+```bash
+docker compose -f docker-compose.fast.yml up -d --force-recreate
+```
+
 The compose service sets `FUGU_MODEL`, `FUGU_VECTOR`, `FUGU_FLASH_HEAD`,
 `FUGU_PRO_HEAD`, and the 11-model `OPENAI_MODEL` list. Put `OPENAI_API_KEY`,
 `OPENAI_API_BASE`, `FUGU_API_KEY`, and `FUGU_BASE_URL` in `.env`.
