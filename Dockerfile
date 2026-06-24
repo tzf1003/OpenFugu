@@ -1,6 +1,6 @@
 FROM python:3.12-slim
 
-ARG OPENFUGU_VERSION=0.1
+ARG OPENFUGU_VERSION=0.2
 LABEL org.opencontainers.image.title="OpenFugu" \
       org.opencontainers.image.version="${OPENFUGU_VERSION}"
 

@@ -108,9 +108,9 @@ pool.
 Both are served behind one OpenAI-compatible endpoint. Credentials come from the
 environment via litellm — **never** from config or code.
 
-### Docker 0.1
+### Docker 0.2
 
-The `docker-compose.yml` package serves the trained 0.1 flash/pro heads behind
+The `docker-compose.yml` package serves the trained 0.2 flash/pro heads behind
 the same OpenAI-compatible API. It reads secrets from local `.env` and keeps
 large raw training data out of the image.
 

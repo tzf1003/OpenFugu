@@ -3,9 +3,9 @@ services:
     build:
       context: .
       args:
-        OPENFUGU_VERSION: "0.1"
-    image: openfugu:0.1
-    container_name: openfugu-0-1
+        OPENFUGU_VERSION: "0.2"
+    image: openfugu:0.2
+    container_name: openfugu-0-2
     env_file:
       - .env
     environment:

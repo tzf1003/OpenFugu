@@ -1,7 +1,10 @@
 # caches / build
+.DS_Store
 __pycache__/
 *.pyc
 .md/
+.agents/
+.playwright-cli/
 *.egg-info/
 .venv/
 venv/
@@ -21,6 +24,7 @@ checkpoints/
 secrets*
 
 # local outputs
+data/raw/
 results/*.out
 *.log
 conductor_*_out/

@@ -1,0 +1,29 @@
+OpenFugu 0.2 Docker Compose smoke test
+======================================
+
+Date: 2026-06-24
+Image: openfugu:0.2
+Container: openfugu-0-2
+Port: 8090
+
+Build:
+- docker compose build: PASS
+
+Deployment:
+- docker compose up -d --force-recreate --remove-orphans: PASS
+- GET /health: {"status": "ok"}
+- GET /v1/models: lists openfugu-flash and openfugu-pro
+
+Live model checks:
+- openfugu-flash prompt "What is 21 + 21?": PASS, answer 42
+  - route: trained_head
+  - selected worker: kimi_k2_6
+  - turns: 1
+- openfugu-pro prompt "What is 20 + 22?": PASS, answer 42
+  - route: trained_trinity_head
+  - terminated_by: verifier_accept
+  - turns: 3
+
+Notes:
+- docker-compose.yml reads credentials from .env via env_file.
+- Secrets were not recorded in this smoke log.
