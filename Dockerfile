@@ -21,7 +21,7 @@ RUN pip install --no-cache-dir -r requirements-serve.txt
 COPY . .
 RUN chmod +x docker/entrypoint.sh
 
-EXPOSE 8090
+EXPOSE 8090 8091
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD curl -fsS "http://127.0.0.1:${PORT}/health" || exit 1
 
